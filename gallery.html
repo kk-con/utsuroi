@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>作品一覧 | うつろい</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@200;300;400&family=Shippori+Mincho:wght@300;400&family=Cormorant+Garamond:ital,wght@0,300;1,300&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #fdf6f0;
+  --ink:      #2c1810;
+  --ink-soft: #7a5c52;
+  --ink-faint:#c4a89e;
+  --accent:   #d4748a;
+  --accent2:  #e8a4b0;
+  --border:   rgba(212,116,138,0.18);
+  --card-bg:  rgba(255,250,248,0.9);
+}
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html { font-size:16px; scroll-behavior:smooth; }
+body {
+  font-family:'Noto Serif JP',serif;
+  background:var(--bg); color:var(--ink);
+  min-height:100vh; cursor:none;
+}
+
+#cursor {
+  position:fixed; width:7px; height:7px;
+  background:var(--accent); border-radius:50%;
+  pointer-events:none; z-index:9999;
+  transform:translate(-50%,-50%);
+  box-shadow:0 0 12px 4px rgba(212,116,138,0.3);
+  transition:width .2s, height .2s;
+}
+
+header {
+  position:fixed; top:0; left:0; right:0; z-index:100;
+  padding:20px 48px;
+  display:flex; align-items:center; justify-content:space-between;
+  backdrop-filter:blur(12px);
+  background:rgba(253,246,240,0.85);
+  border-bottom:1px solid var(--border);
+}
+.logo {
+  font-family:'Shippori Mincho',serif; font-weight:300;
+  font-size:1.2rem; letter-spacing:0.3em;
+  color:var(--ink); text-decoration:none;
+}
+.logo span {
+  font-family:'Cormorant Garamond',serif; font-style:italic;
+  font-size:0.72rem; letter-spacing:0.2em;
+  color:var(--ink-soft); margin-left:10px; vertical-align:middle;
+}
+.back-btn {
+  font-family:'Noto Serif JP',serif; font-weight:200;
+  font-size:0.68rem; letter-spacing:0.3em;
+  color:var(--ink-soft); text-decoration:none;
+  transition:color .3s;
+}
+.back-btn:hover { color:var(--accent); }
+
+.page {
+  max-width:1200px; margin:0 auto; padding:0 40px;
+}
+
+/* ── Hero ── */
+.hero {
+  padding:140px 0 60px;
+}
+.hero-label {
+  font-family:'Cormorant Garamond',serif; font-style:italic;
+  font-size:0.78rem; letter-spacing:0.4em; color:var(--accent);
+  margin-bottom:16px;
+}
+.hero-title {
+  font-family:'Shippori Mincho',serif; font-weight:300;
+  font-size:clamp(2rem,5vw,3.5rem); letter-spacing:0.2em;
+  color:var(--ink); margin-bottom:8px;
+}
+.hero-count {
+  font-size:0.72rem; letter-spacing:0.25em;
+  color:var(--ink-faint); font-weight:200;
+}
+
+/* ── Filters ── */
+.filters {
+  display:flex; flex-wrap:wrap; gap:8px;
+  margin:48px 0 52px;
+  padding-bottom:28px;
+  border-bottom:1px solid var(--border);
+}
+.filter-btn {
+  font-family:'Noto Serif JP',serif; font-weight:200;
+  font-size:0.65rem; letter-spacing:0.25em;
+  color:var(--ink-soft);
+  border:1px solid var(--border); border-radius:20px;
+  padding:5px 16px; background:transparent; cursor:none;
+  transition:all .3s;
+}
+.filter-btn:hover { border-color:var(--accent2); color:var(--accent); }
+.filter-btn.active {
+  background:var(--accent); border-color:var(--accent);
+  color:white;
+}
+
+/* ── Grid ── */
+.gallery-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(260px,1fr));
+  gap:24px;
+  padding-bottom:100px;
+}
+
+.gallery-card {
+  background:var(--card-bg);
+  border:1px solid var(--border); border-radius:4px;
+  overflow:hidden; text-decoration:none; color:inherit;
+  transition:transform .4s, box-shadow .4s, border-color .3s;
+  opacity:0; animation:fadeUp .6s ease forwards;
+}
+.gallery-card:hover {
+  transform:translateY(-5px);
+  box-shadow:0 16px 40px rgba(0,0,0,0.07);
+  border-color:var(--accent2);
+}
+.gallery-card.hidden {
+  display:none;
+}
+
+.card-preview {
+  width:100%; aspect-ratio:16/10;
+  position:relative; overflow:hidden;
+  display:flex; align-items:center; justify-content:center;
+}
+.card-preview-kanji {
+  font-family:'Shippori Mincho',serif;
+  font-size:2.4rem; letter-spacing:0.15em;
+  position:relative; z-index:1;
+}
+.card-preview-glow {
+  position:absolute; inset:0;
+  border-radius:0;
+}
+
+.card-body { padding:18px 20px 20px; }
+.card-season {
+  font-family:'Cormorant Garamond',serif; font-style:italic;
+  font-size:0.58rem; letter-spacing:0.35em;
+  color:var(--accent); margin-bottom:5px;
+}
+.card-title {
+  font-family:'Shippori Mincho',serif; font-weight:400;
+  font-size:0.95rem; letter-spacing:0.15em;
+  color:var(--ink); margin-bottom:8px;
+}
+.card-desc {
+  font-size:0.7rem; line-height:1.9; letter-spacing:0.04em;
+  color:var(--ink-soft); font-weight:200;
+}
+.card-tags {
+  display:flex; flex-wrap:wrap; gap:5px; margin-top:12px;
+}
+.tag {
+  font-size:0.56rem; letter-spacing:0.2em; color:var(--accent);
+  border:1px solid var(--border); border-radius:20px;
+  padding:2px 9px;
+  transition:background .3s, color .3s;
+}
+.gallery-card:hover .tag {
+  background:var(--accent); color:white; border-color:var(--accent);
+}
+
+/* Empty state */
+.empty {
+  grid-column:1/-1; text-align:center;
+  padding:80px 0;
+  font-size:0.8rem; letter-spacing:0.2em;
+  color:var(--ink-faint); font-weight:200;
+}
+
+footer {
+  border-top:1px solid var(--border);
+  padding:32px 48px;
+  display:flex; justify-content:space-between; align-items:center;
+}
+.footer-logo {
+  font-family:'Shippori Mincho',serif; font-size:0.95rem;
+  letter-spacing:0.3em; color:var(--ink-soft);
+}
+.footer-copy {
+  font-size:0.62rem; letter-spacing:0.2em; color:var(--ink-faint);
+}
+
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(16px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+@media(max-width:768px) {
+  header { padding:16px 24px; }
+  .page  { padding:0 24px; }
+  .gallery-grid { grid-template-columns:1fr 1fr; gap:16px; }
+  footer { flex-direction:column; gap:10px; text-align:center; }
+}
+@media(max-width:480px) {
+  .gallery-grid { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+
+<div id="cursor"></div>
+
+<header>
+  <a href="index.html" class="logo">うつろい <span>Utsuroi</span></a>
+  <a href="index.html" class="back-btn">← トップへ</a>
+</header>
+
+<main>
+  <section class="page">
+    <div class="hero">
+      <p class="hero-label">Interactive Design Gallery</p>
+      <h1 class="hero-title">作品一覧</h1>
+      <p class="hero-count" id="count-label">7 作品</p>
+    </div>
+
+    <!-- Filters -->
+    <div class="filters">
+      <button class="filter-btn active" data-filter="all">すべて</button>
+      <button class="filter-btn" data-filter="春">春</button>
+      <button class="filter-btn" data-filter="夏">夏</button>
+      <button class="filter-btn" data-filter="秋">秋</button>
+      <button class="filter-btn" data-filter="冬">冬</button>
+      <button class="filter-btn" data-filter="音">音</button>
+    </div>
+
+    <!-- Grid -->
+    <div class="gallery-grid" id="gallery-grid">
+
+      <!-- 桜 -->
+      <a href="works/sakura.html" class="gallery-card" data-tags="春" style="animation-delay:.05s">
+        <div class="card-preview" style="background:linear-gradient(160deg,#1a0d20,#0d0810);">
+          <div class="card-preview-glow" style="background:radial-gradient(ellipse at 40% 40%,rgba(242,140,160,0.14),transparent 70%);"></div>
+          <span class="card-preview-kanji" style="color:rgba(242,196,206,0.38);">桜</span>
+        </div>
+        <div class="card-body">
+          <p class="card-season">春 — Spring</p>
+          <h3 class="card-title">桜</h3>
+          <p class="card-desc">花びらが静かに舞い落ちる。<br>近づくと、そっと避けていく。</p>
+          <div class="card-tags"><span class="tag">春</span><span class="tag">インタラクティブ</span></div>
+        </div>
+      </a>
+
+      <!-- 蛍 -->
+      <a href="works/hotaru.html" class="gallery-card" data-tags="夏" style="animation-delay:.10s">
+        <div class="card-preview" style="background:linear-gradient(160deg,#010c04,#000801);">
+          <div class="card-preview-glow" style="background:radial-gradient(ellipse at 55% 45%,rgba(120,220,80,0.12),transparent 70%);"></div>
+          <span class="card-preview-kanji" style="color:rgba(160,255,120,0.32);">蛍</span>
+        </div>
+        <div class="card-body">
+          <p class="card-season">夏 — Summer</p>
+          <h3 class="card-title">蛍</h3>
+          <p class="card-desc">暗闇に光が漂う。<br>静かに手を止めると、近づいてくる。</p>
+          <div class="card-tags"><span class="tag">夏</span><span class="tag">インタラクティブ</span></div>
+        </div>
+      </a>
+
+      <!-- 花火 -->
+      <a href="works/hanabi.html" class="gallery-card" data-tags="夏" style="animation-delay:.15s">
+        <div class="card-preview" style="background:linear-gradient(160deg,#05040e,#08060f);">
+          <div class="card-preview-glow" style="background:radial-gradient(ellipse at 50% 40%,rgba(255,160,60,0.12),transparent 70%);"></div>
+          <span class="card-preview-kanji" style="color:rgba(255,200,100,0.35);">花火</span>
+        </div>
+        <div class="card-body">
+          <p class="card-season">夏 — Summer</p>
+          <h3 class="card-title">花火</h3>
+          <p class="card-desc">夜空に花が咲く。<br>クリックで、好きな場所に打ち上げる。</p>
+          <div class="card-tags"><span class="tag">夏</span><span class="tag">インタラクティブ</span></div>
+        </div>
+      </a>
+
+      <!-- 灯籠 -->
+      <a href="works/lantern.html" class="gallery-card" data-tags="秋" style="animation-delay:.20s">
+        <div class="card-preview" style="background:linear-gradient(160deg,#06050f,#080814);">
+          <div class="card-preview-glow" style="background:radial-gradient(ellipse at 50% 40%,rgba(255,140,40,0.12),transparent 70%);"></div>
+          <span class="card-preview-kanji" style="color:rgba(255,180,60,0.38);">灯籠</span>
+        </div>
+        <div class="card-body">
+          <p class="card-season">秋 — Autumn</p>
+          <h3 class="card-title">灯籠</h3>
+          <p class="card-desc">夜空にランタンが舞い上がる。<br>クリックで、願いを放つ。</p>
+          <div class="card-tags"><span class="tag">秋</span><span class="tag">インタラクティブ</span></div>
+        </div>
+      </a>
+
+      <!-- 紅葉 -->
+      <a href="works/momiji.html" class="gallery-card" data-tags="秋" style="animation-delay:.25s">
+        <div class="card-preview" style="background:linear-gradient(160deg,#0d0800,#1a0c02);">
+          <div class="card-preview-glow" style="background:radial-gradient(ellipse at 45% 45%,rgba(200,80,10,0.14),transparent 70%);"></div>
+          <span class="card-preview-kanji" style="color:rgba(220,100,30,0.38);">紅葉</span>
+        </div>
+        <div class="card-body">
+          <p class="card-season">秋 — Autumn</p>
+          <h3 class="card-title">紅葉</h3>
+          <p class="card-desc">モミジとイチョウが舞い落ちる。<br>クリックで、積もった葉を巻き上げる。</p>
+          <div class="card-tags"><span class="tag">秋</span><span class="tag">インタラクティブ</span></div>
+        </div>
+      </a>
+
+      <!-- 雪 -->
+      <a href="works/yuki.html" class="gallery-card" data-tags="冬" style="animation-delay:.30s">
+        <div class="card-preview" style="background:linear-gradient(160deg,#04080f,#080e18);">
+          <div class="card-preview-glow" style="background:radial-gradient(ellipse at 50% 35%,rgba(160,200,255,0.1),transparent 70%);"></div>
+          <span class="card-preview-kanji" style="color:rgba(200,225,255,0.32);">雪</span>
+        </div>
+        <div class="card-body">
+          <p class="card-season">冬 — Winter</p>
+          <h3 class="card-title">雪</h3>
+          <p class="card-desc">雪が静かに積もっていく。<br>マウスを動かすと、風が吹く。</p>
+          <div class="card-tags"><span class="tag">冬</span><span class="tag">インタラクティブ</span></div>
+        </div>
+      </a>
+
+      <!-- 風鈴 -->
+      <a href="works/furin.html" class="gallery-card" data-tags="夏 音" style="animation-delay:.35s">
+        <div class="card-preview" style="background:linear-gradient(160deg,#06080f,#080c18);">
+          <div class="card-preview-glow" style="background:radial-gradient(ellipse at 50% 40%,rgba(140,180,255,0.1),transparent 70%);"></div>
+          <span class="card-preview-kanji" style="color:rgba(180,210,255,0.32);">風鈴</span>
+        </div>
+        <div class="card-body">
+          <p class="card-season">夏 — Summer</p>
+          <h3 class="card-title">風鈴</h3>
+          <p class="card-desc">夜風に揺れ、涼やかに鳴る。<br>クリックで、風を送る。</p>
+          <div class="card-tags"><span class="tag">夏</span><span class="tag">音</span><span class="tag">インタラクティブ</span></div>
+        </div>
+      </a>
+
+    </div><!-- /grid -->
+  </section>
+</main>
+
+<footer>
+  <span class="footer-logo">うつろい</span>
+  <span class="footer-copy">© 2025 Utsuroi</span>
+</footer>
+
+<script>
+/* ── Cursor ── */
+const cursorEl = document.getElementById('cursor');
+document.addEventListener('mousemove', e => {
+  cursorEl.style.left = e.clientX + 'px';
+  cursorEl.style.top  = e.clientY + 'px';
+});
+
+/* ── Filter ── */
+const filterBtns = document.querySelectorAll('.filter-btn');
+const cards      = document.querySelectorAll('.gallery-card');
+const countLabel = document.getElementById('count-label');
+
+filterBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    filterBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    const f = btn.dataset.filter;
+    let visible = 0;
+
+    cards.forEach((card, i) => {
+      const tags = card.dataset.tags ?? '';
+      const show = f === 'all' || tags.includes(f);
+      if (show) {
+        card.classList.remove('hidden');
+        card.style.animationDelay = (visible * 0.06) + 's';
+        card.style.animation = 'none';
+        requestAnimationFrame(() => {
+          card.style.animation = '';
+        });
+        visible++;
+      } else {
+        card.classList.add('hidden');
+      }
+    });
+
+    countLabel.textContent = visible + ' 作品';
+
+    // Empty state
+    const grid  = document.getElementById('gallery-grid');
+    const empty = grid.querySelector('.empty');
+    if (visible === 0) {
+      if (!empty) {
+        const el = document.createElement('p');
+        el.className = 'empty';
+        el.textContent = 'このカテゴリの作品はまだありません';
+        grid.appendChild(el);
+      }
+    } else {
+      if (empty) empty.remove();
+    }
+  });
+});
+</script>
+</body>
+</html>

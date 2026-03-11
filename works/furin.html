@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>風鈴 | うつろい</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@200;300&family=Shippori+Mincho:wght@300&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#06080f; cursor:none; }
+  canvas { position:fixed; inset:0; display:block; z-index:1; }
+
+  #cursor {
+    position:fixed; width:6px; height:6px;
+    background:rgba(180,210,255,0.8); border-radius:50%;
+    pointer-events:none; z-index:100;
+    transform:translate(-50%,-50%);
+    box-shadow:0 0 8px 3px rgba(140,180,255,0.2);
+  }
+  #back {
+    position:fixed; top:28px; left:36px; z-index:50;
+    font-family:'Noto Serif JP',serif; font-weight:200;
+    font-size:0.65rem; letter-spacing:0.35em;
+    color:rgba(180,210,255,0.3); text-decoration:none;
+    transition:color .3s;
+  }
+  #back:hover { color:rgba(180,210,255,0.75); }
+  #title {
+    position:fixed; bottom:44px; left:50%;
+    transform:translateX(-50%);
+    text-align:center; pointer-events:none; z-index:50;
+  }
+  #title h1 {
+    font-family:'Shippori Mincho',serif; font-weight:300;
+    font-size:clamp(1.4rem,3vw,2.2rem); letter-spacing:0.4em;
+    color:rgba(180,210,255,0.35);
+    text-shadow:0 0 24px rgba(140,180,255,0.15);
+  }
+  #volume {
+    position:fixed; bottom:44px; right:40px; z-index:50;
+    display:flex; align-items:center; gap:10px;
+    opacity:0.3; transition:opacity .3s;
+  }
+  #volume:hover { opacity:0.75; }
+  #volume label {
+    font-family:'Noto Serif JP',serif; font-weight:200;
+    font-size:0.58rem; letter-spacing:0.3em;
+    color:rgba(180,210,255,0.9);
+  }
+  #volume input[type=range] {
+    -webkit-appearance:none; width:72px; height:1px;
+    background:rgba(180,210,255,0.4); outline:none; cursor:pointer;
+  }
+  #volume input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:10px; height:10px;
+    border-radius:50%; background:rgba(180,210,255,0.8);
+  }
+</style>
+</head>
+<body>
+
+<div id="cursor"></div>
+<canvas id="c"></canvas>
+<a href="../index.html" id="back">← うつろい</a>
+<div id="title"><h1>風鈴</h1></div>
+<div id="volume">
+  <label>音量</label>
+  <input type="range" id="vol-slider" min="0" max="100" value="40">
+</div>
+
+<script>
+const canvas   = document.getElementById('c');
+const ctx      = canvas.getContext('2d');
+const cursorEl = document.getElementById('cursor');
+
+let W = canvas.width  = window.innerWidth;
+let H = canvas.height = window.innerHeight;
+
+let masterVol = 0.4;
+document.getElementById('vol-slider').addEventListener('input', e => {
+  masterVol = e.target.value / 100;
+});
+
+/* ── Audio ── */
+let audioCtx = null;
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function playChime(freq) {
+  if (masterVol < 0.01) return;
+  try {
+    const ac  = getAudio();
+    const osc = ac.createOscillator();
+    const env = ac.createGain();
+    osc.connect(env); env.connect(ac.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, ac.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.997, ac.currentTime + 4);
+    env.gain.setValueAtTime(0, ac.currentTime);
+    env.gain.linearRampToValueAtTime(masterVol * 0.18, ac.currentTime + 0.006);
+    env.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 4.2);
+    osc.start(ac.currentTime);
+    osc.stop(ac.currentTime + 4.3);
+    // Overtone
+    const o2  = ac.createOscillator();
+    const e2  = ac.createGain();
+    o2.connect(e2); e2.connect(ac.destination);
+    o2.type = 'sine';
+    o2.frequency.setValueAtTime(freq * 2.75, ac.currentTime);
+    e2.gain.setValueAtTime(0, ac.currentTime);
+    e2.gain.linearRampToValueAtTime(masterVol * 0.06, ac.currentTime + 0.004);
+    e2.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 2.0);
+    o2.start(ac.currentTime); o2.stop(ac.currentTime + 2.1);
+  } catch(e) {}
+}
+
+/* ── Global wind ── */
+// All chimes share this wind — same direction, varying strength over time
+let globalWind     = 0;   // current wind force (positive = right)
+let windTarget     = 0;
+let windTimer      = 0;
+let nextGust       = 180 + Math.floor(Math.random() * 300); // frames until next gust
+
+function updateWind() {
+  windTimer++;
+  if (windTimer >= nextGust) {
+    windTimer = 0;
+    nextGust  = 200 + Math.floor(Math.random() * 400);
+    // Gust in a random direction, random strength
+    windTarget = (Math.random() - 0.5) * 0.014;
+  }
+  // Smooth wind change, slow decay
+  globalWind += (windTarget - globalWind) * 0.015;
+  windTarget  *= 0.994; // gust dies down naturally
+}
+
+/* ── Chime configs ── */
+const CONFIGS = [
+  { x:0.18, freq:880,  r:18, color:[160,200,255], lag:1.00 },
+  { x:0.32, freq:1046, r:15, color:[180,215,255], lag:1.08 },
+  { x:0.50, freq:784,  r:21, color:[145,190,255], lag:0.95 },
+  { x:0.67, freq:988,  r:14, color:[190,218,255], lag:1.12 },
+  { x:0.82, freq:1175, r:12, color:[200,225,255], lag:1.05 },
+];
+
+/* ── WindChime ── */
+class WindChime {
+  constructor(cfg) {
+    this.cfg        = cfg;
+    this.xBase      = cfg.x * W;
+    this.yHang      = H * 0.10;
+    this.r          = cfg.r;
+    this.freq       = cfg.freq * (0.98 + Math.random() * 0.04);
+    this.lag        = cfg.lag; // how quickly it responds to wind
+
+    // Bell pendulum
+    this.angle      = (Math.random() - 0.5) * 0.04;
+    this.angleVel   = 0;
+    this.damp       = 0.986;
+
+    // Ring state
+    this.lastRang   = -9999;
+    this.cooldown   = 3000 + Math.random() * 3000;
+    this.glowAlpha  = 0;
+
+    // Short冊 strip
+    this.stripAngle = 0;
+    this.stripVel   = 0;
+    this.stripLen   = this.r * 3.5 + 30 + Math.random() * 20;
+  }
+
+  update(t) {
+    // Bell follows global wind with individual lag
+    const windForce  = globalWind * this.lag;
+    const gravity    = 0.00035;
+    this.angleVel   += -gravity * Math.sin(this.angle) + windForce;
+    this.angleVel   *= this.damp;
+    this.angle      += this.angleVel;
+    this.angle       = Math.max(-0.5, Math.min(0.5, this.angle));
+
+    // Strip lags behind bell
+    this.stripVel += (this.angle * 0.25 - this.stripAngle) * 0.012;
+    this.stripVel *= 0.96;
+    this.stripAngle += this.stripVel;
+
+    // Ring when bell swings fast enough
+    const speed = Math.abs(this.angleVel);
+    if (speed > 0.0045 && t - this.lastRang > this.cooldown) {
+      playChime(this.freq);
+      this.lastRang  = t;
+      this.cooldown  = 3200 + Math.random() * 4000;
+      this.glowAlpha = 1.0;
+    }
+    this.glowAlpha *= 0.955;
+  }
+
+  draw() {
+    const {r, color} = this.cfg;
+    const [rc,gc,bc] = color;
+    const bx = this.xBase;
+    const by = this.yHang;
+
+    ctx.save();
+    ctx.translate(bx, by);
+
+    // Hanging string
+    const stringLen = H * 0.08;
+    ctx.beginPath();
+    ctx.moveTo(0, -stringLen);
+    ctx.lineTo(0, 0);
+    ctx.strokeStyle = `rgba(${rc},${gc},${bc},0.22)`;
+    ctx.lineWidth   = 0.7;
+    ctx.stroke();
+
+    ctx.rotate(this.angle);
+
+    // Ring glow
+    if (this.glowAlpha > 0.01) {
+      const glow = ctx.createRadialGradient(0,0,0,0,0,r*3.5);
+      glow.addColorStop(0, `rgba(${rc},${gc},${bc},${this.glowAlpha*0.4})`);
+      glow.addColorStop(1, `rgba(${rc},${gc},${bc},0)`);
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(0,0,r*3.5,0,Math.PI*2); ctx.fill();
+    }
+
+    // ── Glass ball ──
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2);
+    const shell = ctx.createRadialGradient(-r*0.3,-r*0.35,r*0.05,-r*0.1,-r*0.1,r*1.1);
+    shell.addColorStop(0,   `rgba(255,255,255,0.55)`);
+    shell.addColorStop(0.25,`rgba(${rc},${gc},${bc},0.35)`);
+    shell.addColorStop(0.6, `rgba(${rc},${gc},${bc},0.18)`);
+    shell.addColorStop(1,   `rgba(${rc},${gc},${bc},0.08)`);
+    ctx.fillStyle = shell; ctx.fill();
+    ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2);
+    ctx.strokeStyle = `rgba(${rc},${gc},${bc},0.5)`;
+    ctx.lineWidth   = 0.8; ctx.stroke();
+    ctx.beginPath(); ctx.arc(-r*0.28, -r*0.32, r*0.18, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(0, r*0.88, r*0.38, r*0.1, 0, 0, Math.PI*2);
+    ctx.strokeStyle = `rgba(${rc},${gc},${bc},0.45)`;
+    ctx.lineWidth   = 0.7; ctx.stroke();
+
+    // 短冊 strip — hangs from bottom, lags behind bell
+    ctx.save();
+    ctx.translate(0, r * 0.88);
+    ctx.rotate(this.stripAngle - this.angle);
+    const sw=6, sh=this.stripLen;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(-sw/2, 0, sw, sh, 1);
+    else ctx.rect(-sw/2, 0, sw, sh);
+    const sg = ctx.createLinearGradient(0,0,0,sh);
+    sg.addColorStop(0,   `rgba(255,240,210,0.72)`);
+    sg.addColorStop(0.5, `rgba(255,225,185,0.5)`);
+    sg.addColorStop(1,   `rgba(255,205,160,0.2)`);
+    ctx.fillStyle = sg; ctx.fill();
+    ctx.restore();
+
+    ctx.restore();
+  }
+}
+
+/* ── Stars ── */
+const STARS = Array.from({length:120},()=>({
+  x:Math.random(), y:Math.random()*0.65,
+  r:Math.random()*0.7+0.2, a:Math.random()*0.5+0.1,
+  tw:Math.random()*Math.PI*2, ts:0.006+Math.random()*0.012,
+}));
+
+function drawBG() {
+  const sky = ctx.createLinearGradient(0,0,0,H);
+  sky.addColorStop(0,   '#06080f');
+  sky.addColorStop(0.5, '#080c18');
+  sky.addColorStop(1,   '#0c1020');
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
+
+  // Moon
+  const mx=W*0.78, my=H*0.14;
+  const mg=ctx.createRadialGradient(mx,my,0,mx,my,W*0.3);
+  mg.addColorStop(0,'rgba(200,220,255,0.07)');
+  mg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=mg; ctx.fillRect(0,0,W,H);
+  const mc=ctx.createRadialGradient(mx,my,0,mx,my,11);
+  mc.addColorStop(0,'rgba(230,242,255,0.3)');
+  mc.addColorStop(1,'rgba(200,220,255,0)');
+  ctx.beginPath(); ctx.arc(mx,my,11,0,Math.PI*2);
+  ctx.fillStyle=mc; ctx.fill();
+
+  // Stars
+  STARS.forEach(s=>{
+    s.tw+=s.ts;
+    const a=s.a*(0.5+0.5*Math.sin(s.tw));
+    ctx.beginPath(); ctx.arc(s.x*W,s.y*H,s.r,0,Math.PI*2);
+    ctx.fillStyle=`rgba(210,225,255,${a})`; ctx.fill();
+  });
+
+  // Beam / eave bar
+  const barY = H * 0.10;
+  const barG = ctx.createLinearGradient(W*0.08,0,W*0.92,0);
+  barG.addColorStop(0,  'rgba(120,150,200,0)');
+  barG.addColorStop(0.15,'rgba(140,165,215,0.4)');
+  barG.addColorStop(0.5, 'rgba(155,180,230,0.55)');
+  barG.addColorStop(0.85,'rgba(140,165,215,0.4)');
+  barG.addColorStop(1,  'rgba(120,150,200,0)');
+  ctx.fillStyle=barG;
+  ctx.fillRect(W*0.08, barY-3, W*0.84, 5);
+
+  // Vignette
+  const vig=ctx.createRadialGradient(W/2,H/2,H*0.2,W/2,H/2,H*0.9);
+  vig.addColorStop(0,'rgba(0,0,0,0)');
+  vig.addColorStop(1,'rgba(0,0,0,0.5)');
+  ctx.fillStyle=vig; ctx.fillRect(0,0,W,H);
+}
+
+/* ── Init ── */
+let chimes = CONFIGS.map(cfg => new WindChime(cfg));
+let mouseX = W/2, mouseY = H/2;
+
+/* ── Render ── */
+function render(t) {
+  ctx.clearRect(0,0,W,H);
+  drawBG();
+  updateWind();
+  chimes.forEach(c => { c.update(t); c.draw(); });
+  requestAnimationFrame(render);
+}
+
+/* ── Events ── */
+document.addEventListener('mousemove', e => {
+  mouseX = e.clientX; mouseY = e.clientY;
+  cursorEl.style.left = e.clientX+'px';
+  cursorEl.style.top  = e.clientY+'px';
+});
+
+window.addEventListener('click', e => {
+  // Send a gust toward nearest chime
+  let nearest=null, minD=Infinity;
+  chimes.forEach(c => {
+    const d = Math.abs(e.clientX - c.xBase);
+    if (d < minD) { minD=d; nearest=c; }
+  });
+  if (nearest) {
+    const dir = e.clientX < nearest.xBase ? 1 : -1;
+    // Nudge global wind slightly too so neighbors sway
+    windTarget += dir * 0.006;
+    nearest.angleVel += dir * 0.022;
+  }
+});
+
+window.addEventListener('touchmove', e => {
+  const t=e.touches[0]; mouseX=t.clientX; mouseY=t.clientY;
+}, {passive:true});
+
+window.addEventListener('touchstart', e => {
+  const t=e.touches[0];
+  let nearest=null, minD=Infinity;
+  chimes.forEach(c=>{
+    const d=Math.abs(t.clientX-c.xBase);
+    if(d<minD){minD=d;nearest=c;}
+  });
+  if(nearest) nearest.angleVel += (Math.random()<0.5?1:-1)*0.02;
+},{passive:true});
+
+window.addEventListener('resize', ()=>{
+  W=canvas.width=window.innerWidth;
+  H=canvas.height=window.innerHeight;
+  chimes.forEach((c,i)=>{
+    c.xBase = CONFIGS[i].x * W;
+    c.yHang = H * 0.10;
+  });
+});
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

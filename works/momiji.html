@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>紅葉 | うつろい</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@200;300&family=Shippori+Mincho:wght@300&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#0d0800; cursor:none; }
+  canvas { position:fixed; inset:0; display:block; z-index:1; }
+
+  #cursor {
+    position:fixed; width:7px; height:7px;
+    background:rgba(220,100,40,0.85); border-radius:50%;
+    pointer-events:none; z-index:100;
+    transform:translate(-50%,-50%);
+    box-shadow:0 0 10px 4px rgba(200,80,20,0.25);
+  }
+
+  #back {
+    position:fixed; top:28px; left:36px; z-index:50;
+    font-family:'Noto Serif JP',serif; font-weight:200;
+    font-size:0.65rem; letter-spacing:0.35em;
+    color:rgba(220,140,60,0.3); text-decoration:none;
+    transition:color .3s;
+  }
+  #back:hover { color:rgba(220,140,60,0.8); }
+
+  #title {
+    position:fixed; bottom:44px; left:50%;
+    transform:translateX(-50%);
+    text-align:center; pointer-events:none; z-index:50;
+  }
+  #title h1 {
+    font-family:'Shippori Mincho',serif; font-weight:300;
+    font-size:clamp(1.4rem,3vw,2.2rem); letter-spacing:0.4em;
+    color:rgba(220,120,40,0.4);
+    text-shadow:0 0 30px rgba(180,80,20,0.2);
+  }
+</style>
+</head>
+<body>
+
+<div id="cursor"></div>
+<canvas id="c"></canvas>
+<a href="../index.html" id="back">← うつろい</a>
+<div id="title"><h1>紅葉</h1></div>
+
+<script>
+const canvas  = document.getElementById('c');
+const ctx     = canvas.getContext('2d');
+const cursorEl= document.getElementById('cursor');
+
+let W = canvas.width  = window.innerWidth;
+let H = canvas.height = window.innerHeight;
+
+/* ── Colours ── */
+const MOMIJI_COLS = [
+  '#c0200a','#d43010','#e05018','#c83820',
+  '#b84010','#e06828','#cc4418','#a01808',
+];
+const ICHO_COLS = [
+  '#d4a800','#e0b800','#f0c800','#c89400',
+  '#e8c040','#d4b020','#f0d060','#c8a010',
+];
+
+/* ── Draw leaf shapes onto an offscreen canvas ── */
+// Momiji (maple) — 5-lobed star shape
+function drawMomiji(ctx, size, col) {
+  ctx.fillStyle = col;
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+  ctx.lineWidth = 0.4;
+  ctx.beginPath();
+  const lobes = 7;
+  for (let i = 0; i < lobes; i++) {
+    const outerA = (i / lobes) * Math.PI * 2 - Math.PI / 2;
+    const innerA = outerA + Math.PI / lobes;
+    const ox = Math.cos(outerA) * size;
+    const oy = Math.sin(outerA) * size;
+    const ix = Math.cos(innerA) * size * 0.38;
+    const iy = Math.sin(innerA) * size * 0.38;
+    if (i === 0) ctx.moveTo(ox, oy);
+    else ctx.lineTo(ox, oy);
+    ctx.lineTo(ix, iy);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  // Stem
+  ctx.beginPath();
+  ctx.moveTo(0, size * 0.3);
+  ctx.lineTo(0, size * 1.1);
+  ctx.strokeStyle = col;
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+}
+
+// Icho (ginkgo) — fan shape
+function drawIcho(ctx, size, col) {
+  ctx.fillStyle = col;
+  ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+  ctx.lineWidth = 0.4;
+  ctx.beginPath();
+  ctx.arc(0, 0, size, Math.PI * 0.85, Math.PI * 0.15, true);
+  // Notch at top center
+  ctx.quadraticCurveTo(size * 0.15, -size * 0.1, 0, -size * 0.35);
+  ctx.quadraticCurveTo(-size * 0.15, -size * 0.1, Math.cos(Math.PI * 0.85) * size, Math.sin(Math.PI * 0.85) * size);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  // Stem
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(0, size * 0.9);
+  ctx.strokeStyle = col;
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+}
+
+/* ── Pre-render leaf sprites ── */
+function makeSprite(type, size, col) {
+  const s  = Math.ceil(size * 2.6);
+  const oc = document.createElement('canvas');
+  oc.width = oc.height = s;
+  const ox = oc.getContext('2d');
+  ox.translate(s / 2, s / 2);
+  if (type === 'momiji') drawMomiji(ox, size, col);
+  else                   drawIcho(ox, size, col);
+  return oc;
+}
+
+// Cache sprites
+const SPRITES = [];
+const SIZES   = [7, 9, 11, 13];
+MOMIJI_COLS.forEach(c => SIZES.forEach(s => SPRITES.push({type:'momiji', col:c, size:s, img:makeSprite('momiji',s,c)})));
+ICHO_COLS.forEach(c   => SIZES.forEach(s => SPRITES.push({type:'icho',   col:c, size:s, img:makeSprite('icho',  s,c)})));
+
+function randSprite() { return SPRITES[Math.floor(Math.random() * SPRITES.length)]; }
+
+/* ── Ground accumulation ── */
+const COL_W = 8;
+let ground  = [];
+function initGround() { ground = new Array(Math.ceil(W / COL_W)).fill(0); }
+initGround();
+const MAX_GROUND = H * 0.22;
+
+/* ── Leaf ── */
+class Leaf {
+  constructor(x, y, opts = {}) {
+    const sp     = randSprite();
+    this.sprite  = sp.img;
+    this.size    = sp.size;
+    this.x       = x;
+    this.y       = y;
+    this.vx      = opts.vx ?? (Math.random() - 0.5) * 1.2;
+    this.vy      = opts.vy ?? (Math.random() * 0.8 + 0.3);
+    this.rot     = Math.random() * Math.PI * 2;
+    this.rotSpd  = (Math.random() - 0.5) * 0.06;
+    this.wobble  = Math.random() * Math.PI * 2;
+    this.wobSpd  = 0.03 + Math.random() * 0.02;
+    this.wobAmp  = 0.3  + Math.random() * 0.4;
+    this.alpha   = 0.85 + Math.random() * 0.15;
+    this.landed  = false;
+  }
+
+  update() {
+    this.wobble += this.wobSpd;
+    this.vy     += 0.05; // gravity
+    this.vx     *= 0.992;
+    this.vy     *= 0.992;
+    this.x      += this.vx + Math.sin(this.wobble) * this.wobAmp;
+    this.y      += this.vy;
+    this.rot    += this.rotSpd;
+
+    if (this.x < -20)  this.x = W + 20;
+    if (this.x > W+20) this.x = -20;
+
+    // Land on ground
+    const col = Math.floor(this.x / COL_W);
+    if (col >= 0 && col < ground.length) {
+      const groundY = H - ground[col];
+      if (this.y >= groundY - this.size * 0.5 && this.vy > 0) {
+        // Accumulate slowly
+        const spread = Math.ceil(this.size * 0.5);
+        for (let i = -spread; i <= spread; i++) {
+          const c = col + i;
+          if (c >= 0 && c < ground.length) {
+            const d = Math.abs(i) / (spread + 1);
+            ground[c] = Math.min(ground[c] + (1 - d) * this.size * 0.06, MAX_GROUND);
+          }
+        }
+        // Smooth neighbors to prevent sharp peaks
+        for (let i = -spread-1; i <= spread+1; i++) {
+          const c = col + i;
+          if (c > 0 && c < ground.length - 1) {
+            ground[c] = ground[c] * 0.92 + (ground[c-1] + ground[c+1]) * 0.04;
+          }
+        }
+        this.landed = true;
+      }
+    }
+    if (this.y > H + 20) this.landed = true;
+  }
+
+  draw() {
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.rot);
+    ctx.drawImage(this.sprite, -this.sprite.width / 2, -this.sprite.height / 2);
+    ctx.restore();
+  }
+}
+
+/* ── Burst on click — leaves fly up from ground level ── */
+function burstSwirl(cx, cy) {
+  const colIdx  = Math.max(0, Math.min(ground.length-1, Math.floor(cx / COL_W)));
+  const groundH = ground[colIdx] ?? 0;
+  const n = 6 + Math.floor(Math.min(groundH / 3, 18));
+  for (let i = 0; i < n; i++) {
+    const angle  = -Math.PI * 0.9 + Math.random() * Math.PI * 0.8;
+    const spd    = 2.5 + Math.random() * 5.5;
+    const startX = cx + (Math.random() - 0.5) * 60;
+    const startY = H - groundH + Math.random() * 8;
+    const leaf   = new Leaf(startX, startY, {
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+    });
+    leaf.rotSpd = (Math.random() - 0.5) * 0.2;
+    leaves.push(leaf);
+  }
+}
+
+/* ── Background ── */
+function drawBG() {
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0,    '#0d0800');
+  sky.addColorStop(0.35, '#1a0c02');
+  sky.addColorStop(0.65, '#2a1204');
+  sky.addColorStop(1,    '#1a0a02');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+
+  const glow = ctx.createRadialGradient(W*0.5, H*0.62, 0, W*0.5, H*0.62, W*0.6);
+  glow.addColorStop(0,   'rgba(180,80,10,0.12)');
+  glow.addColorStop(0.5, 'rgba(140,50,5,0.06)');
+  glow.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  const mx = W * 0.75, my = H * 0.16;
+  const moonG = ctx.createRadialGradient(mx,my,0,mx,my,W*0.3);
+  moonG.addColorStop(0, 'rgba(255,200,120,0.07)');
+  moonG.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = moonG; ctx.fillRect(0,0,W,H);
+  const mc = ctx.createRadialGradient(mx,my,0,mx,my,10);
+  mc.addColorStop(0, 'rgba(255,230,160,0.28)');
+  mc.addColorStop(1, 'rgba(255,200,120,0)');
+  ctx.beginPath(); ctx.arc(mx,my,10,0,Math.PI*2);
+  ctx.fillStyle=mc; ctx.fill();
+
+  drawTrees();
+
+  const vig = ctx.createRadialGradient(W/2,H/2,H*0.2,W/2,H/2,H);
+  vig.addColorStop(0,'rgba(0,0,0,0)');
+  vig.addColorStop(1,'rgba(0,0,0,0.55)');
+  ctx.fillStyle=vig; ctx.fillRect(0,0,W,H);
+}
+
+/* ── Tree silhouettes ── */
+function drawTrees() {
+  ctx.save();
+  const baseY = H * 0.68;
+  ctx.fillStyle = 'rgba(6,3,0,0.97)';
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  ctx.lineTo(0, baseY + 10);
+  ctx.bezierCurveTo(W*0.15, baseY-30, W*0.28, baseY-55, W*0.40, baseY-20);
+  ctx.bezierCurveTo(W*0.50, baseY+5,  W*0.58, baseY-60, W*0.68, baseY-35);
+  ctx.bezierCurveTo(W*0.78, baseY-10, W*0.88, baseY-45, W,      baseY-15);
+  ctx.lineTo(W, H);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+/* ── Ground leaves rendering ── */
+function drawGround() {
+  if (ground.every(g => g < 0.5)) return;
+  ctx.save();
+
+  // Deep shadow base
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  for (let i=0; i<ground.length; i++) {
+    const x = i * COL_W;
+    const y = H - ground[i];
+    if (i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.lineTo(W, H);
+  ctx.closePath();
+  const base = ctx.createLinearGradient(0, H - MAX_GROUND, 0, H);
+  base.addColorStop(0,   'rgba(80,25,5,0.9)');
+  base.addColorStop(0.35,'rgba(110,38,8,0.95)');
+  base.addColorStop(0.7, 'rgba(90,30,5,0.97)');
+  base.addColorStop(1,   'rgba(60,18,3,1)');
+  ctx.fillStyle = base;
+  ctx.fill();
+
+  // Mid layer — warm orange-red
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  for (let i=0; i<ground.length; i++) {
+    const x = i * COL_W;
+    const y = H - ground[i] * 0.75;
+    if (i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.lineTo(W, H);
+  ctx.closePath();
+  const mid = ctx.createLinearGradient(0, H - MAX_GROUND * 0.75, 0, H);
+  mid.addColorStop(0,   'rgba(180,65,15,0.55)');
+  mid.addColorStop(0.5, 'rgba(160,55,10,0.45)');
+  mid.addColorStop(1,   'rgba(120,40,8,0.6)');
+  ctx.fillStyle = mid;
+  ctx.fill();
+
+  // Top layer — bright warm highlights
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  for (let i=0; i<ground.length; i++) {
+    const x = i * COL_W;
+    const y = H - ground[i] * 0.45;
+    if (i===0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.lineTo(W, H);
+  ctx.closePath();
+  const top = ctx.createLinearGradient(0, H - MAX_GROUND * 0.45, 0, H);
+  top.addColorStop(0,   'rgba(220,100,20,0.3)');
+  top.addColorStop(0.4, 'rgba(200,80,15,0.2)');
+  top.addColorStop(1,   'rgba(160,55,10,0.25)');
+  ctx.fillStyle = top;
+  ctx.fill();
+
+  // Surface edge — thin bright line where leaves catch the moonlight
+  ctx.beginPath();
+  ctx.moveTo(0, H - ground[0]);
+  for (let i=1; i<ground.length; i++) ctx.lineTo(i*COL_W, H-ground[i]);
+  const edgeGrad = ctx.createLinearGradient(0, 0, W, 0);
+  edgeGrad.addColorStop(0,   'rgba(240,140,50,0.15)');
+  edgeGrad.addColorStop(0.3, 'rgba(220,100,30,0.3)');
+  edgeGrad.addColorStop(0.6, 'rgba(200,80,20,0.2)');
+  edgeGrad.addColorStop(1,   'rgba(180,60,15,0.12)');
+  ctx.strokeStyle = edgeGrad;
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+
+  // Scattered colour dots — simulate individual leaves on surface
+  const avgH = ground.reduce((a,b)=>a+b,0)/ground.length;
+  if (avgH > 4) {
+    const dotCols = [
+      'rgba(200,50,10,0.18)','rgba(220,120,20,0.15)',
+      'rgba(180,80,10,0.2)', 'rgba(240,160,30,0.12)',
+      'rgba(160,40,8,0.18)', 'rgba(200,100,15,0.15)',
+    ];
+    for (let i=0; i<ground.length; i+=3) {
+      if (ground[i] < 1) continue;
+      const x = i * COL_W + Math.random() * COL_W * 3;
+      const y = H - ground[i] + Math.random() * Math.min(ground[i] * 0.4, 6);
+      const r = 2 + Math.random() * 4;
+      const col = dotCols[Math.floor(Math.random()*dotCols.length)];
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
+      ctx.fillStyle = col; ctx.fill();
+    }
+  }
+
+  ctx.restore();
+}
+
+/* ── Init leaves ── */
+let leaves = Array.from({length: 60}, () =>
+  new Leaf(
+    Math.random() * W,
+    Math.random() * H
+  )
+);
+
+/* ── Auto drift — occasionally add new falling leaves ── */
+let driftTimer = 0;
+
+/* ── Render ── */
+function render() {
+  drawBG();
+  drawGround();
+
+  // Update & draw leaves
+  leaves = leaves.filter(l => { l.update(); l.draw(); return !l.landed; });
+
+  // Replenish drifting leaves
+  driftTimer++;
+  if (driftTimer > 40) {
+    driftTimer = 0;
+    if (leaves.filter(l => !l.isSwirlLeaf).length < 55) {
+      leaves.push(new Leaf(Math.random() * (W + 60) - 30, -10));
+    }
+  }
+
+  // Gently smooth ground every frame to prevent lopsided peaks
+  for (let i = 1; i < ground.length - 1; i++) {
+    ground[i] = ground[i] * 0.998 + (ground[i-1] + ground[i+1]) * 0.001;
+  }
+
+  requestAnimationFrame(render);
+}
+
+/* ── Events ── */
+document.addEventListener('mousemove', e => {
+  cursorEl.style.left = e.clientX + 'px';
+  cursorEl.style.top  = e.clientY + 'px';
+});
+
+window.addEventListener('click', e => {
+  burstSwirl(e.clientX, e.clientY);
+});
+
+window.addEventListener('touchstart', e => {
+  const t = e.touches[0];
+  burstSwirl(t.clientX, t.clientY);
+}, { passive: true });
+
+window.addEventListener('resize', () => {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  initGround();
+});
+
+render();
+</script>
+</body>
+</html>

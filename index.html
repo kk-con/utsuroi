@@ -42,7 +42,7 @@
 }
 
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
-html { font-size:16px; scroll-behavior:smooth; }
+html { font-size:16px; scroll-behavior:smooth; cursor:none; }
 body {
   font-family:'Noto Serif JP',serif;
   background-color:var(--bg);
@@ -75,7 +75,7 @@ body:hover #cursor-ring { opacity:0.45; }
 /* Canvas bg */
 #canvas-bg {
   position:fixed; inset:0; z-index:0;
-  pointer-events:none; opacity:0.7;
+  pointer-events:none; opacity:0.7; cursor:none;
 }
 
 /* Season label */
@@ -100,11 +100,12 @@ header {
   background:rgba(253,246,240,0.78);
   border-bottom:1px solid var(--border);
   transition:background 1.2s, border-color 1.2s;
+  cursor:none;
 }
 .logo {
   font-family:'Shippori Mincho',serif; font-weight:300;
   font-size:1.3rem; letter-spacing:0.3em;
-  color:var(--ink); text-decoration:none;
+  color:var(--ink); text-decoration:none; cursor:none;
 }
 .logo span {
   font-family:'Cormorant Garamond',serif; font-style:italic;
@@ -116,7 +117,7 @@ nav a {
   font-family:'Noto Serif JP',serif; font-weight:200;
   font-size:0.75rem; letter-spacing:0.3em;
   color:var(--ink-soft); text-decoration:none;
-  transition:color .3s; position:relative;
+  transition:color .3s; position:relative; cursor:none;
 }
 nav a::after {
   content:''; position:absolute; bottom:-3px; left:0; right:0;
@@ -203,7 +204,7 @@ nav a:hover::after { transform:scaleX(1); }
 
 /* Gallery */
 .gallery-grid {
-  display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:28px;
+  display:grid; grid-template-columns:repeat(4,1fr); gap:28px;
 }
 .gallery-card {
   background:var(--card-bg); border:1px solid var(--border); border-radius:4px;
@@ -305,6 +306,9 @@ footer {
 @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
 
 /* Responsive */
+@media(max-width:1024px){
+  .gallery-grid{grid-template-columns:repeat(2,1fr)}
+}
 @media(max-width:768px){
   header{padding:18px 24px}
   .page{padding:0 24px}
@@ -502,10 +506,10 @@ document.addEventListener('mousemove', e => {
 
 /* ── Season switcher ── */
 const seasonData = {
-  spring: { label:'春 — Haru',  season:null },
-  summer: { label:'夏 — Natsu', season:'summer' },
-  autumn: { label:'秋 — Aki',   season:'autumn' },
-  winter: { label:'冬 — Fuyu',  season:'winter' },
+  spring: { label:'春 — Haru',  season:null,     tint:'rgba(253,246,240,0.88)' },
+  summer: { label:'夏 — Natsu', season:'summer', tint:'rgba(240,247,244,0.88)' },
+  autumn: { label:'秋 — Aki',   season:'autumn', tint:'rgba(253,243,234,0.88)' },
+  winter: { label:'冬 — Fuyu',  season:'winter', tint:'rgba(244,246,248,0.88)' },
 };
 
 document.querySelectorAll('.season-btn').forEach(btn => {
@@ -514,13 +518,15 @@ document.querySelectorAll('.season-btn').forEach(btn => {
     btn.classList.add('active');
     const key  = btn.dataset.s;
     const data = seasonData[key];
-    document.body.dataset.season = data.season ?? '';
-    if (!data.season) delete document.body.dataset.season;
+    // Properly set or remove data-season attribute
+    if (data.season) {
+      document.body.setAttribute('data-season', data.season);
+    } else {
+      document.body.removeAttribute('data-season');
+    }
     document.getElementById('season-label').textContent = data.label;
-    // Update header bg tint
     const header = document.getElementById('header');
-    const tints  = { spring:'rgba(253,246,240,0.78)', summer:'rgba(240,247,244,0.78)', autumn:'rgba(253,243,234,0.78)', winter:'rgba(244,246,248,0.78)' };
-    header.style.background = tints[key];
+    header.style.background = data.tint;
   });
 });
 
@@ -576,6 +582,15 @@ window.addEventListener('resize', () => {
 
 /* ── Hide 下へ on scroll ── */
 const scrollIndicator = document.querySelector('.hero-scroll');
+let lastScrollY = 0;
 window.addEventListener('scroll', () => {
-  if (window.scrollY > 40) {
-    scrollIndicator.classL
+  const currentY = window.scrollY;
+  if (currentY > 40 && currentY > lastScrollY) {
+    // 下方向にスクロール → 消す
+    scrollIndicator.classList.add('hidden');
+  } else if (currentY < lastScrollY) {
+    // 上方向にスクロール → 戻す
+    scrollIndicator.classList.remove('hidden');
+  }
+  lastScrollY = currentY;
+});
